@@ -24,13 +24,17 @@ desv_sd <- sd(sample_means)
 ```{r histograma-vs-normal}
 op <- par(no.readonly = TRUE)
 par(las = 1)  # etiquetas y títulos horizontales
+main_label <- bquote(
+  f(bar(x)) == frac(1, sqrt(2 * pi) * hat(sigma)) * italic(e)^(frac(-1, 2) * (frac(bar(x) - hat(mu), hat(sigma)))^2) ~~
+    hat(mu) == .(round(gran_media, 2)) ~~ "," ~~ hat(sigma) == .(round(desv_sd, 2))
+)
 hist_obj <- hist(
   sample_means,
   breaks = 10,
   probability = TRUE,
   col = NA,
   border = NA,
-  main = "Medias muestrales vs Normal",
+  main = main_label,
   xlab = expression(bar(x)),
   ylab = expression(f(bar(x))),
   yaxt = "n"
@@ -79,5 +83,9 @@ segments(
 )
 y_label <- y_sd + 0.08 * dens_span
 text(gran_media + desv_sd / 2, y_label, expression(hat(sigma)), col = color_mu, font = 2)
+plot_path <- "clt_plot.jpg"
+invisible(dev.copy(jpeg, filename = plot_path, width = 840, height = 480, quality = 95))
+dev.off()
 par(op)
+cat(sprintf("Gráfico guardado en %s\n", plot_path))
 ```
