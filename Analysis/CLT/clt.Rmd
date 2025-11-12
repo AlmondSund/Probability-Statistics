@@ -7,6 +7,11 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+})
 ```
 
 ## Experimento
@@ -58,96 +63,125 @@ La gran media obtenida es `r round(grand_mean, 2)`, lo que resume la tendencia c
 
 ## Evidencia gráfica del TLC
 
-Como las medias posibles solo toman valores discretos, es más apropiado representar sus frecuencias relativas mediante un gráfico de tallos (similar a `np.stem`) en lugar de un histograma de barras.
+Como las medias posibles solo toman valores discretos, es más apropiado representar sus probabilidades mediante un gráfico tipo tallo (similar a `np.stem`) y superponer la masa normal esperada y la función de densidad analítica del TLC. A continuación se calcula cada componente paso a paso para mantener la coherencia matemática:
 
-```{r stem-plot, fig.cap="Probabilidades discretas de las medias muestrales y densidad normal del TLC"}
-unique_means <- sort(unique(sample_means))
-freq_table <- table(factor(sample_means, levels = unique_means))
-prob_empirical <- as.numeric(freq_table) / length(sample_means)
-
-levels_count <- length(unique_means)
-
-if (levels_count == 1) {
-  lower_bounds <- -Inf
-  upper_bounds <- Inf
-} else {
-  gaps <- diff(unique_means)
-  inner_midpoints <- (unique_means[-1] + unique_means[-levels_count]) / 2
-  lower_bounds <- c(unique_means[1] - gaps[1] / 2,
-                    inner_midpoints)
-  upper_bounds <- c(inner_midpoints,
-                    unique_means[levels_count] + gaps[levels_count - 1] / 2)
-  lower_bounds[1] <- -Inf
-  upper_bounds[levels_count] <- Inf
+```{r stem-plot, fig.cap="Probabilidades discretas de las medias muestrales frente a la aproximación normal"}
+calc_interval_bounds <- function(values) {
+  values <- sort(values)
+  n <- length(values)
+  if (n == 1) {
+    return(data.frame(lower = -Inf, upper = Inf))
+  }
+  midpoints <- (values[-1] + values[-n]) / 2
+  data.frame(
+    lower = c(-Inf, midpoints),
+    upper = c(midpoints, Inf)
+  )
 }
 
-normal_mass <- pnorm(upper_bounds, mean = grand_mean, sd = sd_means) -
-               pnorm(lower_bounds, mean = grand_mean, sd = sd_means)
+empirical_tbl <- clt_data |>
+  dplyr::count(mean, name = "freq") |>
+  dplyr::arrange(mean) |>
+  dplyr::mutate(prob = freq / sum(freq))
 
-base_range <- range(unique_means)
-x_span <- diff(base_range)
-if (x_span == 0) x_span <- 1
-y_limits <- c(0, max(c(prob_empirical, normal_mass)) * 1.15)
+bounds <- calc_interval_bounds(empirical_tbl$mean)
+if (sd_means > 0) {
+  theory_prob <- pnorm(bounds$upper, mean = grand_mean, sd = sd_means) -
+                 pnorm(bounds$lower, mean = grand_mean, sd = sd_means)
+} else {
+  theory_prob <- as.numeric(empirical_tbl$mean == grand_mean)
+}
 
-shift <- if (levels_count > 1) min(diff(unique_means)) * 0.15 else x_span * 0.05
-x_limits <- range(c(unique_means, unique_means + shift)) + c(-0.05, 0.05) * x_span
+empirical_tbl <- empirical_tbl |>
+  dplyr::mutate(
+    lower = bounds$lower,
+    upper = bounds$upper,
+    theory_prob = theory_prob
+  )
 
-plot(NA,
-     xlim = x_limits,
-     ylim = y_limits,
-     xlab = "Media de cada muestra",
-     ylab = "Probabilidad",
-     main = "Distribución discreta de las medias (n = 9)")
+spacing <- if (nrow(empirical_tbl) > 1) min(diff(empirical_tbl$mean)) else max(sd_means, 1)
+if (!is.finite(spacing) || spacing == 0) spacing <- 1
+offset <- spacing * 0.25
 
-segments(unique_means, 0, unique_means, prob_empirical,
-         col = "#0D47A1", lwd = 3)
-points(unique_means, prob_empirical, pch = 19, col = "#0D47A1")
+empirical_tbl <- empirical_tbl |>
+  dplyr::mutate(theory_x = mean + offset)
 
-segments(unique_means + shift, 0,
-         unique_means + shift, normal_mass,
-         col = "#8E24AA", lwd = 2, lty = 3)
-points(unique_means + shift, normal_mass, pch = 17, col = "#8E24AA")
+if (sd_means > 0) {
+  padding <- spacing
+  density_df <- data.frame(
+    x = seq(min(empirical_tbl$mean) - padding,
+            max(empirical_tbl$mean) + padding,
+            length.out = 500)
+  )
+  density_df$density <- dnorm(density_df$x, mean = grand_mean, sd = sd_means)
+  max_density <- max(density_df$density)
+  scale_factor <- if (max_density > 0) {
+    max(empirical_tbl$prob) / max_density * 0.9
+  } else {
+    1
+  }
+  density_df$scaled_density <- density_df$density * scale_factor
+} else {
+  density_df <- data.frame(
+    x = empirical_tbl$mean,
+    scaled_density = NA_real_
+  )
+  scale_factor <- 1
+}
 
-legend("topright",
-       legend = c("Probabilidad empírica", "Masa normal teórica", "Densidad normal (eje derecho)"),
-       col = c("#0D47A1", "#8E24AA", "#E53935"),
-       lty = c(1, 3, 1),
-       lwd = c(3, 2, 2),
-       pch = c(19, 17, NA),
-       bty = "n")
-
-par(new = TRUE)
-density_limits <- c(0, dnorm(grand_mean, mean = grand_mean, sd = sd_means) * 1.1)
-curve(dnorm(x, mean = grand_mean, sd = sd_means),
-      from = x_limits[1],
-      to = x_limits[2],
-      col = "#E53935",
-      lwd = 2,
-      axes = FALSE,
-      xlab = "",
-      ylab = "",
-      ylim = density_limits)
-axis(side = 4, col = "#E53935", col.axis = "#E53935")
-mtext("Densidad normal", side = 4, line = 2.2, col = "#E53935")
-
-mtext(expression(f[bar(X)](x) == frac(1, sigma[bar(X)] * sqrt(2 * pi)) *
-                   exp(-(x - mu[bar(X)])^2 / (2 * sigma[bar(X)]^2))),
-      side = 3,
-      line = -1.2,
-      col = "#E53935",
-      cex = 0.8)
-
-text(x = x_limits[1] + 0.02 * x_span,
-     y = y_limits[2] * 0.92,
-     labels = bquote(hat(mu)[bar(X)] == .(round(grand_mean, 2)) ~ ", " ~
-                     hat(sigma)[bar(X)] == .(round(sd_means, 2))),
-     col = "#0D47A1",
-     adj = c(0, 1))
+ggplot(empirical_tbl, aes(x = mean)) +
+  geom_segment(aes(xend = mean, y = 0, yend = prob),
+               linewidth = 1.2,
+               color = "#0D47A1") +
+  geom_point(aes(y = prob),
+             color = "#0D47A1",
+             size = 2.5) +
+  geom_segment(aes(x = theory_x, xend = theory_x, y = 0, yend = theory_prob),
+               color = "#8E24AA",
+               linewidth = 1,
+               linetype = "dashed") +
+  geom_point(aes(x = theory_x, y = theory_prob),
+             color = "#8E24AA",
+             shape = 17,
+             size = 2.2) +
+  geom_line(data = density_df,
+            aes(x = x, y = scaled_density),
+            color = "#E53935",
+            linewidth = 1) +
+  scale_y_continuous(
+    name = "Probabilidad discreta",
+    sec.axis = sec_axis(
+      trans = ~ . / scale_factor,
+      name = "Densidad normal"
+    )
+  ) +
+  labs(
+    x = "Media de cada muestra",
+    title = "Distribución discreta vs. aproximación normal",
+    subtitle = "Azul: probabilidad empírica | Morado: masa normal integrada | Rojo: pdf normal"
+  ) +
+  annotate(
+    "text",
+    x = min(empirical_tbl$mean),
+    y = max(empirical_tbl$prob) * 0.9,
+    label = paste0("Gran media ≈ ", round(grand_mean, 2),
+                   "  -  sd(medias) ≈ ", round(sd_means, 2)),
+    hjust = 0,
+    color = "#0D47A1",
+    size = 3.1
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.title.y.right = element_text(color = "#E53935"),
+    axis.text.y.right = element_text(color = "#E53935")
+  )
 ```
 
-Los tallos azules muestran la probabilidad empírica de cada media observada, mientras que los tallos punteados morados corresponden a la probabilidad que se obtiene al integrar la densidad normal del TLC en torno a cada valor. La curva roja (con su eje derecho) es precisamente la función analítica
+Los tallos azules recogen la probabilidad empírica exacta de cada media observada, los tallos morados representan la masa que la normal asigna al intervalo de valores contiguos, y la línea roja es la función analítica
 \[
 f_{\bar{X}}(x)=\frac{1}{\sigma_{\bar{X}}\sqrt{2\pi}}
 \exp\!\left(-\frac{(x-\mu_{\bar{X}})^2}{2\sigma_{\bar{X}}^2}\right),
 \]
-evaluada con `r round(grand_mean, 2)` y `r round(sd_means, 2)` como estimadores de \(\mu_{\bar{X}}\) y \(\sigma_{\bar{X}}\). La cercanía entre ambas probabilidades evidencia cómo las medias (aun discretas) siguen la forma normal predicha por el Teorema del Límite Central.
+evaluada con `r round(grand_mean, 2)` y `r round(sd_means, 2)` como estimadores de \(\mu_{\bar{X}}\) y \(\sigma_{\bar{X}}\). La cercanía entre ambas representaciones evidencia cómo las medias (aun siendo discretas) siguen la forma normal predicha por el Teorema del Límite Central.
