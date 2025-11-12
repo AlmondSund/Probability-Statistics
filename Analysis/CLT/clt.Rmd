@@ -33,13 +33,21 @@ hist_obj <- hist(
 )
 
 # líneas delgadas al centro de cada rectángulo
-segments(hist_obj$mids, 0, hist_obj$mids, hist_obj$density, col = "#444444", lwd = 1)
-points(hist_obj$mids, hist_obj$density, col = "#444444", pch = 16, cex = 0.7)
+segments(
+  hist_obj$mids,
+  0,
+  hist_obj$mids,
+  hist_obj$density,
+  col = adjustcolor("blue", alpha.f = 0.6),
+  lwd = 1
+)
+points(hist_obj$mids, hist_obj$density, col = "blue", pch = 16, cex = 0.7)
 
 x_vals <- seq(min(sample_means), max(sample_means), length.out = 200)
-lines(x_vals, dnorm(x_vals, mean = gran_media, sd = desv_sd), col = "#F15854", lwd = 2)
+normal_col <- "#E74C3C"  # rojo intenso sin transparencia
+lines(x_vals, dnorm(x_vals, mean = gran_media, sd = desv_sd), col = normal_col, lwd = 2)
 
-color_mu <- "#D91E18"
+color_mu <- "#2E8B57"  # verde profundo para mu_hat y sigma_hat
 axis(
   side = 1,
   at = gran_media,
@@ -51,19 +59,19 @@ axis(
   lwd.ticks = 1,
   tcl = -0.3
 )
-abline(v = gran_media, col = color_mu, lwd = 2, lty = 2)
+abline(v = gran_media, col = adjustcolor(color_mu, alpha.f = 0.95), lwd = 2, lty = 3)
 y_sd <- max(hist_obj$density) * 0.6
 dens_span <- diff(range(hist_obj$density, na.rm = TRUE))
 if (!is.finite(dens_span) || dens_span == 0) dens_span <- max(hist_obj$density, na.rm = TRUE)
 segments(
-  gran_media - desv_sd,
+  gran_media,
   y_sd,
   gran_media + desv_sd,
   y_sd,
-  col = color_mu,
+  col = adjustcolor(color_mu, alpha.f = 0.95),
   lwd = 2,
   lty = 3
 )
-y_label <- y_sd + 0.05 * dens_span
-text(gran_media + desv_sd / 2, y_label, expression(hat(sigma)), col = color_mu)
+y_label <- y_sd + 0.08 * dens_span
+text(gran_media + desv_sd / 2, y_label, expression(hat(sigma)), col = color_mu, font = 2)
 ```
