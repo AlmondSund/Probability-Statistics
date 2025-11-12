@@ -9,22 +9,70 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Experimento
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Se toma una urna con 12 valores distintos, se extraen 9 bolas con reemplazo y se calcula la media de cada muestra. Este procedimiento se repite 50 veces para estudiar cómo se comporta la distribución de las medias muestrales.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+## Preparación de los datos
 
-```{r cars}
-summary(cars)
+```{r load-data}
+dataset_path <- if (file.exists("dataset.csv")) {
+  "dataset.csv"
+} else if (file.exists(file.path("Analysis", "CLT", "dataset.csv"))) {
+  file.path("Analysis", "CLT", "dataset.csv")
+} else {
+  stop("No se encontró el archivo dataset.csv.")
+}
+
+clt_data <- read.csv(dataset_path)
+sample_means <- clt_data$mean
+
+knitr::kable(head(clt_data[, c("sample", "mean")]),
+             col.names = c("Muestra", "Media"),
+             caption = "Primeras medias muestrales registradas.")
 ```
 
-## Including Plots
+## Gran media de las medias
 
-You can also embed plots, for example:
+La **gran media** corresponde al promedio de las 50 medias muestrales. Según el Teorema del Límite Central (TLC), esta cantidad es un estimador insesgado de la media poblacional y su dispersión se reduce conforme aumenta el número de réplicas. En este caso obtenemos:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r grand-mean, results='asis'}
+grand_mean <- mean(sample_means)
+sd_means <- sd(sample_means)
+se_grand_mean <- sd_means / sqrt(length(sample_means))
+
+summary_tbl <- data.frame(
+  Estadístico = c("Número de réplicas", "Gran media", "Desviación de las medias", "Error estándar de la gran media"),
+  Valor = c(length(sample_means),
+            round(grand_mean, 2),
+            round(sd_means, 2),
+            round(se_grand_mean, 2))
+)
+
+knitr::kable(summary_tbl,
+             align = "lc",
+             caption = "Resumen numérico de las medias muestrales.")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+La gran media obtenida es `r round(grand_mean, 2)`, lo que resume la tendencia central de las 50 medias. El error estándar (`r round(se_grand_mean, 2)`) cuantifica la incertidumbre asociada a este estimador.
+
+## Evidencia gráfica del TLC
+
+```{r histogram, fig.cap="Histograma de las medias muestrales con aproximación normal"}
+hist(sample_means,
+     breaks = 10,
+     freq = FALSE,
+     main = "Distribución de las medias muestrales (n = 9)",
+     xlab = "Media de cada muestra",
+     col = "#90CAF9",
+     border = "white")
+
+curve(dnorm(x, mean = grand_mean, sd = sd_means),
+      add = TRUE,
+      col = "#E53935",
+      lwd = 2)
+
+rug(sample_means, col = "#0D47A1")
+```
+
+El histograma muestra que las medias muestrales ya se aproximan a una curva normal centrada en la gran media (línea roja). Esta aproximación es la manifestación gráfica del TLC: aunque los valores individuales de la urna no son normales, la distribución de las medias de muestras independientes de tamaño 9 converge rápidamente hacia una normal al incrementar el número de repeticiones.
