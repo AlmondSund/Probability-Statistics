@@ -58,21 +58,44 @@ La gran media obtenida es `r round(grand_mean, 2)`, lo que resume la tendencia c
 
 ## Evidencia gráfica del TLC
 
-```{r histogram, fig.cap="Histograma de las medias muestrales con aproximación normal"}
-hist(sample_means,
-     breaks = 10,
-     freq = FALSE,
-     main = "Distribución de las medias muestrales (n = 9)",
+Como las medias posibles solo toman valores discretos, es más apropiado representar sus frecuencias relativas mediante un gráfico de tallos (similar a `np.stem`) en lugar de un histograma de barras.
+
+```{r stem-plot, fig.cap="Frecuencia relativa de las medias muestrales y función normal aproximada"}
+unique_means <- sort(unique(sample_means))
+freq_table <- table(factor(sample_means, levels = unique_means))
+rel_freq <- as.numeric(freq_table) / length(sample_means)
+
+plot(unique_means, rel_freq,
+     type = "h",
+     lwd = 6,
+     lend = "butt",
+     col = "#0D47A1",
+     main = "Medias muestrales (n = 9)",
      xlab = "Media de cada muestra",
-     col = "#90CAF9",
-     border = "white")
+     ylab = "Frecuencia relativa")
+points(unique_means, rel_freq, pch = 16, col = "#0D47A1")
 
 curve(dnorm(x, mean = grand_mean, sd = sd_means),
       add = TRUE,
       col = "#E53935",
       lwd = 2)
 
-rug(sample_means, col = "#0D47A1")
+legend("topright",
+       legend = c("Frecuencia relativa", "Aproximación normal"),
+       col = c("#0D47A1", "#E53935"),
+       lwd = c(6, 2),
+       pch = c(16, NA),
+       bty = "n")
+
+normal_expr <- bquote(phi(x) == frac(1, .(round(sd_means, 2)) * sqrt(2 * pi)) *
+                        exp(-((x - .(round(grand_mean, 2)))^2) /
+                              (2 * .(round(sd_means, 2)^2))))
+mtext(normal_expr, side = 3, line = 0.5, col = "#E53935", cex = 0.85)
 ```
 
-El histograma muestra que las medias muestrales ya se aproximan a una curva normal centrada en la gran media (línea roja). Esta aproximación es la manifestación gráfica del TLC: aunque los valores individuales de la urna no son normales, la distribución de las medias de muestras independientes de tamaño 9 converge rápidamente hacia una normal al incrementar el número de repeticiones.
+Los tallos azules muestran las probabilidades empíricas de cada media observada, mientras que la curva roja representa la densidad normal
+\[
+\phi(x) = \frac{1}{\sigma_{\bar{X}}\sqrt{2\pi}}
+          \exp\!\left(-\frac{(x - \mu_{\bar{X}})^2}{2\sigma_{\bar{X}}^2}\right),
+\]
+con `r round(grand_mean, 2)` como media y `r round(sd_means, 2)` como desviación. La superposición ilustra el Teorema del Límite Central: aun con datos discretos, la distribución de las medias converge rápidamente hacia la forma normal al incrementar el número de repeticiones.
