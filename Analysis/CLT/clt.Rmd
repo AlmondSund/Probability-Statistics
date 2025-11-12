@@ -4,3 +4,62 @@ author: "Martín Ramírez Espinosa & Sergio Alejandro González Osorio"
 date: "`r Sys.Date()`"
 output: pdf_document
 ---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Estimación con la ley central del límite
+
+La base de datos contiene las 50 medias muestrales obtenidas al promediar 9 extracciones con reposición desde la urna. Primero calculamos la gran media de dichas medias y la desviación estándar empírica; luego usamos esos valores para ajustar una densidad normal que sirva de aproximación.
+
+```{r calcular-gran-media}
+datos <- read.csv("dataset.csv")
+sample_means <- datos$mean
+
+gran_media <- mean(sample_means)
+desv_sd <- sd(sample_means)
+```
+
+```{r histograma-vs-normal}
+hist_obj <- hist(
+  sample_means,
+  breaks = 10,
+  probability = TRUE,
+  col = "#5DA5DA",
+  border = "white",
+  main = "Histograma de medias muestrales vs Normal estimada",
+  xlab = "Media de cada repetición"
+)
+
+x_vals <- seq(min(sample_means), max(sample_means), length.out = 200)
+lines(x_vals, dnorm(x_vals, mean = gran_media, sd = desv_sd), col = "#F15854", lwd = 2)
+
+color_mu <- "#D91E18"
+axis(
+  side = 1,
+  at = gran_media,
+  labels = expression(hat(mu)),
+  col = NA,
+  col.axis = color_mu,
+  col.ticks = color_mu,
+  lwd = 0,
+  lwd.ticks = 1,
+  tcl = -0.3
+)
+abline(v = gran_media, col = color_mu, lwd = 2, lty = 2)
+y_sd <- max(hist_obj$density) * 0.6
+dens_span <- diff(range(hist_obj$density, na.rm = TRUE))
+if (!is.finite(dens_span) || dens_span == 0) dens_span <- max(hist_obj$density, na.rm = TRUE)
+segments(
+  gran_media - desv_sd,
+  y_sd,
+  gran_media + desv_sd,
+  y_sd,
+  col = color_mu,
+  lwd = 2,
+  lty = 3
+)
+y_label <- y_sd + 0.05 * dens_span
+text(gran_media + desv_sd / 2, y_label, expression(hat(sigma)), col = color_mu)
+```
