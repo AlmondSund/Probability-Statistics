@@ -22,15 +22,20 @@ desv_sd <- sd(sample_means)
 ```
 
 ```{r histograma-vs-normal}
+op <- par(no.readonly = TRUE)
+par(las = 1)  # etiquetas y títulos horizontales
 hist_obj <- hist(
   sample_means,
   breaks = 10,
   probability = TRUE,
   col = NA,
   border = NA,
-  main = "Histograma de medias muestrales vs Normal estimada",
-  xlab = "Media de cada repetición"
+  main = "Medias muestrales vs Normal",
+  xlab = expression(bar(x)),
+  ylab = expression(f(bar(x))),
+  yaxt = "n"
 )
+axis(side = 2, las = 1)
 
 # líneas delgadas al centro de cada rectángulo
 segments(
@@ -74,4 +79,5 @@ segments(
 )
 y_label <- y_sd + 0.08 * dens_span
 text(gran_media + desv_sd / 2, y_label, expression(hat(sigma)), col = color_mu, font = 2)
+par(op)
 ```
