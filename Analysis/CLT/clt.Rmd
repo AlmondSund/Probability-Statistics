@@ -26,11 +26,15 @@ hist_obj <- hist(
   sample_means,
   breaks = 10,
   probability = TRUE,
-  col = "#5DA5DA",
-  border = "white",
+  col = NA,
+  border = NA,
   main = "Histograma de medias muestrales vs Normal estimada",
   xlab = "Media de cada repetición"
 )
+
+# líneas delgadas al centro de cada rectángulo
+segments(hist_obj$mids, 0, hist_obj$mids, hist_obj$density, col = "#444444", lwd = 1)
+points(hist_obj$mids, hist_obj$density, col = "#444444", pch = 16, cex = 0.7)
 
 x_vals <- seq(min(sample_means), max(sample_means), length.out = 200)
 lines(x_vals, dnorm(x_vals, mean = gran_media, sd = desv_sd), col = "#F15854", lwd = 2)
