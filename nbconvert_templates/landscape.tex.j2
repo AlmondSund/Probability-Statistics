@@ -1,0 +1,15 @@
+((* extends 'latex/index.tex.j2' *))
+
+((*- block docclass -*))
+\documentclass[11pt,landscape]{article}
+((*- endblock docclass -*))
+
+((*- block packages -*))
+    \usepackage[margin=1.2cm, landscape]{geometry}
+    \usepackage{tabularx}
+    ((( super() )))
+((*- endblock packages -*))
+
+((*- block margins -*))
+    \geometry{margin=1.2cm, landscape}
+((*- endblock margins -*))
