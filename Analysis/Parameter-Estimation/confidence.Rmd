@@ -1,0 +1,229 @@
+---
+title: "confidence"
+author: "Martín Ramírez Espinosa & Sergio Alejandro González Osorio"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,      # no mostrar código
+  message = FALSE,
+  warning = FALSE,
+  results = "hide"   # ocultar salidas de texto; conservar gráficos
+)
+```
+
+Experimento Monte Carlo de cobertura de intervalos de confianza para la media verdadera usando aproximación normal (TLC) y varianza teórica conocida. Se implementa el mismo flujo para distribuciones no normales: Uniforme, Weibull, Lognormal y Gamma.
+
+## Funciones generales
+
+```{r}
+# Parámetro por defecto si no se entrega en la lista
+param_or_default <- function(params, name, default) {
+  if (!is.null(params[[name]])) params[[name]] else default
+}
+
+# Configura generador, media y varianza verdaderas según la distribución
+distribution_setup <- function(dist, params = list()) {
+  dist <- tolower(dist)
+  if (dist == "uniform" || dist == "uniforme") {
+    a <- param_or_default(params, "a", 0)
+    b <- param_or_default(params, "b", 10)
+    if (b <= a) stop("Para la uniforme se requiere b > a.")
+    mean_true <- (a + b) / 2
+    var_true <- (b - a)^2 / 12
+    rng <- function(n) stats::runif(n, min = a, max = b)
+    list(id = "uniform", name = "Uniforme", mean_true = mean_true, var_true = var_true, rng = rng, params = list(a = a, b = b))
+  } else if (dist == "weibull") {
+    shape <- if (!is.null(params$k)) params$k else param_or_default(params, "shape", 2)
+    scale <- if (!is.null(params$lambda)) params$lambda else param_or_default(params, "scale", 1)
+    mean_true <- scale * gamma(1 + 1 / shape)
+    var_true <- scale^2 * (gamma(1 + 2 / shape) - (gamma(1 + 1 / shape))^2)
+    rng <- function(n) stats::rweibull(n, shape = shape, scale = scale)
+    list(id = "weibull", name = "Weibull", mean_true = mean_true, var_true = var_true, rng = rng, params = list(shape = shape, scale = scale))
+  } else if (dist %in% c("lognormal", "log-normal", "log normal")) {
+    mu <- if (!is.null(params$mu)) params$mu else param_or_default(params, "meanlog", 0)
+    sigma <- if (!is.null(params$sigma)) params$sigma else param_or_default(params, "sdlog", 0.5)
+    mean_true <- exp(mu + sigma^2 / 2)
+    var_true <- (exp(sigma^2) - 1) * exp(2 * mu + sigma^2)
+    rng <- function(n) stats::rlnorm(n, meanlog = mu, sdlog = sigma)
+    list(id = "lognormal", name = "Lognormal", mean_true = mean_true, var_true = var_true, rng = rng, params = list(meanlog = mu, sdlog = sigma))
+  } else if (dist == "gamma") {
+    shape <- param_or_default(params, "shape", 3)
+    if (!is.null(params$scale) && is.null(params$rate)) {
+      rate <- 1 / params$scale
+    } else {
+      rate <- param_or_default(params, "rate", 1)
+    }
+    if (rate <= 0) stop("El parámetro rate debe ser positivo para la Gamma.")
+    mean_true <- shape / rate
+    var_true <- shape / rate^2
+    rng <- function(n) stats::rgamma(n, shape = shape, rate = rate)
+    list(id = "gamma", name = "Gamma", mean_true = mean_true, var_true = var_true, rng = rng, params = list(shape = shape, rate = rate))
+  } else {
+    stop("Distribución no soportada. Usa: uniforme, weibull, lognormal, gamma.")
+  }
+}
+
+# Genera un único intervalo de confianza 1 - alpha usando varianza teórica
+generate_interval <- function(n, z_value, cfg) {
+  sample_x <- cfg$rng(n)
+  xbar <- mean(sample_x)
+  se <- sqrt(cfg$var_true / n)
+  lower <- xbar - z_value * se
+  upper <- xbar + z_value * se
+  c(lower, upper)
+}
+
+# Simula B intervalos para una distribución y parámetros dados
+simulate_intervals <- function(B, n, alpha, dist, params = list()) {
+  cfg <- distribution_setup(dist, params)
+  z_value <- stats::qnorm(1 - alpha / 2)
+  intervals <- t(replicate(B, generate_interval(n, z_value, cfg)))
+  colnames(intervals) <- c("li", "ls")
+  covers <- intervals[, "li"] < cfg$mean_true & intervals[, "ls"] > cfg$mean_true
+  list(
+    dist_id = cfg$id,
+    dist_name = cfg$name,
+    params_used = cfg$params,
+    intervals = intervals,
+    covers = covers,
+    coverage_rate = mean(covers),
+    mean_true = cfg$mean_true,
+    alpha = alpha,
+    n = n,
+    B = B
+  )
+}
+
+# Expresión LaTeX-like para parámetros (para títulos)
+param_expression <- function(result) {
+  p <- result$params_used
+  switch(result$dist_id,
+         "uniform" = bquote("(" ~ a == .(p$a) * "," ~ b == .(p$b) ~ ")"),
+         "weibull" = bquote("(" ~ k == .(p$shape) * "," ~ lambda == .(p$scale) ~ ")"),
+         "lognormal" = bquote("(" ~ mu == .(p$meanlog) * "," ~ sigma == .(p$sdlog) ~ ")"),
+         "gamma" = bquote("(" ~ alpha == .(p$shape) * "," ~ lambda == .(p$rate) ~ ")"),
+         NULL)
+}
+
+# Distribución teórica con marca en la media verdadera
+plot_true_distribution <- function(result, probs = c(0.001, 0.999)) {
+  p <- result$params_used
+  id <- result$dist_id
+
+  x_seq <- switch(id,
+                  "uniform" = seq(p$a, p$b, length.out = 400),
+                  "weibull" = {
+                    rng <- stats::qweibull(probs, shape = p$shape, scale = p$scale)
+                    seq(rng[1], rng[2], length.out = 400)
+                  },
+                  "lognormal" = {
+                    rng <- stats::qlnorm(probs, meanlog = p$meanlog, sdlog = p$sdlog)
+                    seq(rng[1], rng[2], length.out = 400)
+                  },
+                  "gamma" = {
+                    rng <- stats::qgamma(probs, shape = p$shape, rate = p$rate)
+                    seq(rng[1], rng[2], length.out = 400)
+                  })
+
+  dens <- switch(id,
+                 "uniform" = stats::dunif(x_seq, min = p$a, max = p$b),
+                 "weibull" = stats::dweibull(x_seq, shape = p$shape, scale = p$scale),
+                 "lognormal" = stats::dlnorm(x_seq, meanlog = p$meanlog, sdlog = p$sdlog),
+                 "gamma" = stats::dgamma(x_seq, shape = p$shape, rate = p$rate))
+
+  main_expr <- bquote("Distribución teórica -" ~ .(result$dist_name) ~ .(param_expression(result)))
+
+  plot(x_seq, dens, type = "l",
+       main = main_expr,
+       xlab = "x", ylab = "f(x)")
+  abline(v = result$mean_true, col = "red", lwd = 2, lty = 2)
+  legend("topright",
+         legend = c(expression(f(x)), expression(mu["verdadera"])),
+         col = c("black", "red"),
+         lty = c(1, 2),
+         lwd = c(2, 2),
+         bty = "n",
+         cex = 0.85)
+}
+
+# Grafica intervalos y destaca los que no cubren la media verdadera
+plot_intervals <- function(result) {
+  ints <- result$intervals
+  B <- nrow(ints)
+  cover <- result$covers
+  padding <- 0.02 * diff(range(ints))
+  padding <- if (is.finite(padding) && padding > 0) padding else 0
+  xlim_vals <- range(ints)
+  xlim_vals <- c(xlim_vals[1] - padding, xlim_vals[2] + padding)
+  main_title <- bquote("IC de la media -" ~ .(result$dist_name) ~ .(param_expression(result)))
+
+  plot(NA,
+       xlim = xlim_vals,
+       ylim = c(1, B),
+       ylab = "Repetición",
+       xlab = "Intervalo de confianza",
+       main = main_title)
+  abline(v = result$mean_true, col = "red", lwd = 2, lty = 2)
+
+  for (i in seq_len(B)) {
+    col_seg <- if (cover[i]) "steelblue" else "tomato"
+    segments(ints[i, "li"], i, ints[i, "ls"], i, col = col_seg, lwd = 1.5)
+    points(ints[i, "li"], i, pch = 16, cex = 0.5, col = col_seg)
+    points(ints[i, "ls"], i, pch = 16, cex = 0.5, col = col_seg)
+  }
+
+  legend("topright",
+         legend = c("Cubre la media", "No cubre", expression(mu["verdadera"])),
+         col = c("steelblue", "tomato", "red"),
+         lty = c(1, 1, 2),
+         lwd = c(2, 2, 2),
+         bty = "n",
+         cex = 0.8)
+}
+
+# (Coberturas quedan guardadas en result$coverage_rate por si se necesitan)
+```
+
+## Parámetros base de la simulación
+
+```{r}
+set.seed(123)   # reproducibilidad
+B <- 200        # número de intervalos a simular (menos para visualizar mejor)
+n <- 30         # tamaño de muestra por intervalo
+alpha <- 0.05   # nivel de significación
+```
+
+## Uniforme(a, b)
+
+```{r}
+res_uniforme <- simulate_intervals(B, n, alpha, "uniforme", list(a = 0, b = 10))
+plot_true_distribution(res_uniforme)
+plot_intervals(res_uniforme)
+```
+
+## Weibull(k, lambda)
+
+```{r}
+res_weibull <- simulate_intervals(B, n, alpha, "weibull", list(k = 2, lambda = 1))
+plot_true_distribution(res_weibull)
+plot_intervals(res_weibull)
+```
+
+## Lognormal(mu, sigma)
+
+```{r}
+res_lognormal <- simulate_intervals(B, n, alpha, "lognormal", list(mu = 0, sigma = 0.5))
+plot_true_distribution(res_lognormal)
+plot_intervals(res_lognormal)
+```
+
+## Gamma(shape, rate)
+
+```{r}
+res_gamma <- simulate_intervals(B, n, alpha, "gamma", list(shape = 3, rate = 1))
+plot_true_distribution(res_gamma)
+plot_intervals(res_gamma)
+```
