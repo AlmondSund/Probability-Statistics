@@ -108,6 +108,16 @@ param_expression <- function(result) {
          NULL)
 }
 
+# Expresión analítica de la pdf (para título del gráfico de densidad)
+pdf_expression <- function(result) {
+  switch(result$dist_id,
+         "uniform" = expression(f(x) == frac(1, b - a) ~~ ",", ~~ a <= x ~~ "," ~~ x <= b),
+         "weibull" = expression(f(x) == frac(k, lambda) ~~ (x / lambda)^{k - 1} ~~ e^{- (x / lambda)^k}),
+         "lognormal" = expression(f(x) == frac(1, x ~ sigma ~ sqrt(2 * pi)) ~~ e^{-((log(x) - mu)^2) / (2 * sigma^2)}),
+         "gamma" = expression(f(x) == frac(lambda^alpha, Gamma(alpha)) ~~ x^{alpha - 1} ~~ e^{-lambda * x}),
+         expression(f(x)))
+}
+
 # Distribución teórica con marca en la media verdadera
 plot_true_distribution <- function(result, probs = c(0.001, 0.999)) {
   p <- result$params_used
@@ -134,14 +144,20 @@ plot_true_distribution <- function(result, probs = c(0.001, 0.999)) {
                  "lognormal" = stats::dlnorm(x_seq, meanlog = p$meanlog, sdlog = p$sdlog),
                  "gamma" = stats::dgamma(x_seq, shape = p$shape, rate = p$rate))
 
-  main_expr <- bquote("Distribución teórica -" ~ .(result$dist_name) ~ .(param_expression(result)))
+  main_expr <- pdf_expression(result)
 
   plot(x_seq, dens, type = "l",
        main = main_expr,
        xlab = "x", ylab = "f(x)")
   abline(v = result$mean_true, col = "red", lwd = 2, lty = 2)
+  axis(1,
+       at = result$mean_true,
+       labels = bquote(mu == .(round(result$mean_true, 3))),
+       col.axis = "red",
+       col = "red",
+       tick = TRUE)
   legend("topright",
-         legend = c(expression(f(x)), expression(mu["verdadera"])),
+         legend = c(expression(f(x)), expression(mu)),
          col = c("black", "red"),
          lty = c(1, 2),
          lwd = c(2, 2),
@@ -167,6 +183,12 @@ plot_intervals <- function(result) {
        xlab = "Intervalo de confianza",
        main = main_title)
   abline(v = result$mean_true, col = "red", lwd = 2, lty = 2)
+  axis(1,
+       at = result$mean_true,
+       labels = bquote(mu == .(round(result$mean_true, 3))),
+       col.axis = "red",
+       col = "red",
+       tick = TRUE)
 
   for (i in seq_len(B)) {
     col_seg <- if (cover[i]) "steelblue" else "tomato"
@@ -176,7 +198,7 @@ plot_intervals <- function(result) {
   }
 
   legend("topright",
-         legend = c("Cubre la media", "No cubre", expression(mu["verdadera"])),
+         legend = c("Cubre", "No cubre", expression(mu)),
          col = c("steelblue", "tomato", "red"),
          lty = c(1, 1, 2),
          lwd = c(2, 2, 2),
@@ -191,7 +213,7 @@ plot_intervals <- function(result) {
 
 ```{r}
 set.seed(123)   # reproducibilidad
-B <- 200        # número de intervalos a simular (menos para visualizar mejor)
+B <- 100        # número de intervalos a simular (menos para visualizar mejor)
 n <- 30         # tamaño de muestra por intervalo
 alpha <- 0.05   # nivel de significación
 ```
